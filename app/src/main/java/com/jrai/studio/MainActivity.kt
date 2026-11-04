@@ -184,6 +184,14 @@ private fun PhotoScreen(onBack: () -> Unit) {
             label = { Text("Prompt gambar") },
             placeholder = { Text("Contoh: pemandangan desa saat matahari terbenam...") }
         )
+        Button(
+            onClick = {
+                message = if (createPrompt.isBlank()) "Tuliskan prompt gambar terlebih dahulu."
+                else "Prompt siap. Generator AI belum dihubungkan, sehingga gambar belum dapat dibuat."
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Accent)
+        ) { Text("Buat Foto dari Teks", color = Color.White) }
         Text("EDIT FOTO DENGAN PROMPT", color = Color(0xFFC9C2FF), fontWeight = FontWeight.Bold)
         Text("Pilih foto dari HP, lalu tuliskan perubahan yang kamu inginkan.", color = Muted, fontSize = 13.sp)
         OutlinedButton(onClick = { photoPicker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
