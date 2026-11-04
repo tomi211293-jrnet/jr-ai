@@ -63,6 +63,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -77,6 +84,54 @@ private val Accent = Color(0xFF8B7CFF)
 private val Muted = Color(0xFFA7AEC3)
 
 private enum class AppPage { CHAT, PHOTO, VIDEO, GALLERY }
+
+private data class ChatMessage(val role: String, val content: String)
+
+private suspend fun requestJrAiReply(history: List<ChatMessage>): String = withContext(Dispatchers.IO) {
+    val connection = (URL("https://jr-ai-backend.tomi211293.workers.dev/chat").openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"
+        connectTimeout = 20000
+        readTimeout = 90000
+        doOutput = true
+        setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        setRequestProperty("Accept", "application/json")
+    }
+
+    try {
+        val messagesJson = JSONArray()
+        history.takeLast(20).forEach { message ->
+            messagesJson.put(
+                JSONObject()
+                    .put("role", message.role)
+                    .put("content", message.content.take(4000))
+            )
+        }
+        val requestBody = JSONObject().put("messages", messagesJson).toString()
+        connection.outputStream.use { output ->
+            output.write(requestBody.toByteArray(Charsets.UTF_8))
+        }
+
+        val responseCode = connection.responseCode
+        val responseStream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
+        val responseText = responseStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+        val responseJson = try {
+            JSONObject(responseText)
+        } catch (_: Exception) {
+            JSONObject()
+        }
+
+        if (responseCode !in 200..299 || !responseJson.optBoolean("success", false)) {
+            throw IOException(responseJson.optString("error").ifBlank {
+                "Layanan AI gagal merespons (HTTP $responseCode)."
+            })
+        }
+
+        responseJson.optString("reply").takeIf { it.isNotBlank() }
+            ?: throw IOException("JR AI belum memberikan jawaban.")
+    } finally {
+        connection.disconnect()
+    }
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -110,7 +165,9 @@ private fun JrAiApp() {
 private fun ChatScreen(onPhoto: () -> Unit, onVideo: () -> Unit, onGallery: () -> Unit) {
     var draft by remember { mutableStateOf("") }
     var attachmentSheetOpen by remember { mutableStateOf(false) }
-    var messages by remember { mutableStateOf(listOf<String>()) }
+    val messages = remember { mutableStateListOf<ChatMessage>() }
+    var isSending by remember { mutableStateOf(false) }
+    var statusMessage by remember { mutableStateOf("") }
     val drawerState = rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -137,7 +194,8 @@ private fun ChatScreen(onPhoto: () -> Unit, onVideo: () -> Unit, onGallery: () -
                     selected = false,
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
                     onClick = {
-                        messages = emptyList()
+                        messages.clear()
+                        statusMessage = ""
                         draft = ""
                         scope.launch { drawerState.close() }
                     },
@@ -170,7 +228,7 @@ private fun ChatScreen(onPhoto: () -> Unit, onVideo: () -> Unit, onGallery: () -
                     ) {
                         Icon(Icons.Default.Chat, contentDescription = null, tint = Muted, modifier = Modifier.size(18.dp))
                         Text(
-                            messages.first().take(32),
+                            messages.first().content.take(32),
                             color = Color.White,
                             fontSize = 13.sp,
                             modifier = Modifier.padding(start = 12.dp)
@@ -215,19 +273,31 @@ private fun ChatScreen(onPhoto: () -> Unit, onVideo: () -> Unit, onGallery: () -
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     messages.forEach { message ->
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            Box(
-                                modifier = Modifier.background(Color(0xFF30345A), RoundedCornerShape(20.dp)).padding(horizontal = 15.dp, vertical = 11.dp)
-                            ) {
-                                Text(message, color = Color.White, fontSize = 14.sp)
+                        if (message.role == "user") {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                Box(
+                                    modifier = Modifier.background(Color(0xFF30345A), RoundedCornerShape(20.dp)).padding(horizontal = 15.dp, vertical = 11.dp)
+                                ) {
+                                    Text(message.content, color = Color.White, fontSize = 14.sp)
+                                }
+                            }
+                        } else {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+                                Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
+                                    Text(message.content, color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(14.dp))
+                                }
                             }
                         }
                     }
-                    Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
-                        Text(
-                            "JR AI belum terhubung ke mesin AI. Pesan sudah masuk ke tampilan percakapan, tetapi balasan otomatis akan aktif setelah layanan AI disambungkan.",
-                            color = Muted, fontSize = 13.sp, modifier = Modifier.padding(14.dp)
-                        )
+                    if (isSending) {
+                        Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
+                            Text("JR AI sedang berpikir...", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(14.dp))
+                        }
+                    }
+                    if (statusMessage.isNotBlank()) {
+                        Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
+                            Text(statusMessage, color = Color(0xFFFFD27A), fontSize = 13.sp, modifier = Modifier.padding(14.dp))
+                        }
                     }
                 }
             }
@@ -252,15 +322,34 @@ private fun ChatScreen(onPhoto: () -> Unit, onVideo: () -> Unit, onGallery: () -
                             }
                         },
                         trailingIcon = {
-                            if (draft.isBlank()) {
+                            if (draft.isBlank() || isSending) {
                                 IconButton(onClick = { }) {
-                                    Icon(Icons.Default.Mic, contentDescription = "Suara (segera hadir)", tint = Muted)
+                                    if (isSending) {
+                                        androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Accent, strokeWidth = 2.dp)
+                                    } else {
+                                        Icon(Icons.Default.Mic, contentDescription = "Suara (segera hadir)", tint = Muted)
+                                    }
                                 }
                             } else {
                                 IconButton(
                                     onClick = {
-                                        messages = messages + draft.trim()
-                                        draft = ""
+                                        val textToSend = draft.trim()
+                                        if (textToSend.isNotEmpty() && !isSending) {
+                                            messages.add(ChatMessage("user", textToSend))
+                                            draft = ""
+                                            statusMessage = ""
+                                            isSending = true
+                                            scope.launch {
+                                                try {
+                                                    val reply = requestJrAiReply(messages.toList())
+                                                    messages.add(ChatMessage("assistant", reply))
+                                                } catch (error: Exception) {
+                                                    statusMessage = error.message ?: "Tidak dapat terhubung ke JR AI."
+                                                } finally {
+                                                    isSending = false
+                                                }
+                                            }
+                                        }
                                     }
                                 ) {
                                     Icon(Icons.Default.Send, contentDescription = "Kirim", tint = Accent)
