@@ -37,6 +37,14 @@ export default {
       return json({ success: false, error: "Endpoint tidak ditemukan." }, 404);
     }
 
+    // Baseline abuse protection: limit requests by source IP.
+    // Cloudflare's rate limiter is approximate and local to each edge location.
+    const ip = request.headers.get("cf-connecting-ip") || "unknown";
+    const rate = await env.CHAT_RATE_LIMITER.limit({ key: ip });
+    if (!rate.success) {
+      return json({ success: false, error: "Terlalu banyak permintaan. Coba lagi satu menit." }, 429);
+    }
+
     let body;
     try {
       const raw = await request.text();
