@@ -241,6 +241,7 @@ private fun ChatScreen(onPhoto: () -> Unit, onVideo: () -> Unit, onGallery: () -
                         value = draft,
                         onValueChange = { draft = it },
                         modifier = Modifier.fillMaxWidth(),
+                        textStyle = androidx.compose.ui.text.TextStyle(color = Color.White),
                         minLines = 2,
                         maxLines = 6,
                         placeholder = { Text("Tanyakan apa saja", color = Muted) },
