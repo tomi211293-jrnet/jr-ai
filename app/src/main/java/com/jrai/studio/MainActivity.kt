@@ -31,6 +31,9 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Button
@@ -39,6 +42,14 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -49,6 +60,8 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -91,127 +104,243 @@ private fun JrAiApp() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ChatScreen(onPhoto: () -> Unit, onVideo: () -> Unit, onGallery: () -> Unit) {
     var draft by remember { mutableStateOf("") }
-    var menuExpanded by remember { mutableStateOf(false) }
-    val messages = remember { mutableStateListOf<String>() }
+    var attachmentSheetOpen by remember { mutableStateOf(false) }
+    var messages by remember { mutableStateOf(listOf<String>()) }
+    val drawerState = rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
 
-    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Text("JR AI", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        }
-
-        if (messages.isEmpty()) {
-            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(
-                        modifier = Modifier.size(54.dp).background(
-                            Brush.linearGradient(listOf(Color(0xFF5146A8), Color(0xFF24294A))), CircleShape
-                        ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(27.dp))
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = Color(0xFF111522),
+                drawerContentColor = Color.White
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("JR AI", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                    IconButton(onClick = { scope.launch { drawerState.close() } }) {
+                        Icon(Icons.Default.Close, contentDescription = "Tutup menu", tint = Muted)
                     }
-                    Text("Ada yang bisa saya bantu?", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                    Text("Tanyakan apa saja atau mulai buat sesuatu.", color = Muted, fontSize = 13.sp)
+                }
+                NavigationDrawerItem(
+                    label = { Text("Obrolan baru", fontWeight = FontWeight.SemiBold) },
+                    selected = false,
+                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    onClick = {
+                        messages = emptyList()
+                        draft = ""
+                        scope.launch { drawerState.close() }
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
+                        unselectedContainerColor = Color(0xFF20263A),
+                        unselectedTextColor = Color.White,
+                        unselectedIconColor = Color.White
+                    )
+                )
+                Spacer(Modifier.height(22.dp))
+                Text(
+                    "Riwayat obrolan",
+                    color = Muted,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp)
+                )
+                if (messages.isEmpty()) {
+                    Text(
+                        "Obrolan sebelumnya akan muncul di sini.",
+                        color = Muted,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp)
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Chat, contentDescription = null, tint = Muted, modifier = Modifier.size(18.dp))
+                        Text(
+                            messages.first().take(32),
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(start = 12.dp)
+                        )
+                    }
                 }
             }
-        } else {
-            Column(
-                modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+        }
+    ) {
+        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                messages.forEach { message ->
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                    Icon(Icons.Default.Menu, contentDescription = "Buka menu obrolan", tint = Color.White)
+                }
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Text("JR AI", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.size(48.dp))
+            }
+
+            if (messages.isEmpty()) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Box(
-                            modifier = Modifier.background(Color(0xFF30345A), RoundedCornerShape(20.dp)).padding(horizontal = 15.dp, vertical = 11.dp)
+                            modifier = Modifier.size(54.dp).background(
+                                Brush.linearGradient(listOf(Color(0xFF5146A8), Color(0xFF24294A))), CircleShape
+                            ),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text(message, color = Color.White, fontSize = 14.sp)
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(27.dp))
+                        }
+                        Text("Ada yang bisa saya bantu?", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                        Text("Tanyakan apa saja atau mulai buat sesuatu.", color = Muted, fontSize = 13.sp)
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    messages.forEach { message ->
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            Box(
+                                modifier = Modifier.background(Color(0xFF30345A), RoundedCornerShape(20.dp)).padding(horizontal = 15.dp, vertical = 11.dp)
+                            ) {
+                                Text(message, color = Color.White, fontSize = 14.sp)
+                            }
                         }
                     }
-                }
-                Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
-                    Text(
-                        "JR AI belum terhubung ke mesin AI. Pesan sudah masuk ke tampilan percakapan, tetapi balasan otomatis akan aktif setelah layanan AI disambungkan.",
-                        color = Muted, fontSize = 13.sp, modifier = Modifier.padding(14.dp)
-                    )
+                    Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
+                        Text(
+                            "JR AI belum terhubung ke mesin AI. Pesan sudah masuk ke tampilan percakapan, tetapi balasan otomatis akan aktif setelah layanan AI disambungkan.",
+                            color = Muted, fontSize = 13.sp, modifier = Modifier.padding(14.dp)
+                        )
+                    }
                 }
             }
-        }
 
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Panel),
-            shape = RoundedCornerShape(26.dp),
-            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
-        ) {
-            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                OutlinedTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    maxLines = 6,
-                    placeholder = { Text("Tanyakan apa saja", color = Muted) },
-                    shape = RoundedCornerShape(18.dp)
-                )
-                Spacer(Modifier.height(5.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Panel),
+                shape = RoundedCornerShape(26.dp),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        maxLines = 6,
+                        placeholder = { Text("Tanyakan apa saja", color = Muted) },
+                        shape = RoundedCornerShape(18.dp)
+                    )
+                    Spacer(Modifier.height(5.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         OutlinedButton(
-                            onClick = { menuExpanded = true },
+                            onClick = { attachmentSheetOpen = true },
                             shape = CircleShape,
                             modifier = Modifier.size(42.dp),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = "Tambah", tint = Color.White)
+                            Icon(Icons.Default.Add, contentDescription = "Lampiran", tint = Color.White)
                         }
-                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                            DropdownMenuItem(
-                                text = { Text("Buat gambar") },
-                                leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
-                                onClick = { menuExpanded = false; onPhoto() }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Buat video") },
-                                leadingIcon = { Icon(Icons.Default.Movie, contentDescription = null) },
-                                onClick = { menuExpanded = false; onVideo() }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Galeri saya") },
-                                leadingIcon = { Icon(Icons.Default.Collections, contentDescription = null) },
-                                onClick = { menuExpanded = false; onGallery() }
-                            )
-                        }
-                    }
-                    Spacer(Modifier.weight(1f))
-                    if (draft.isBlank()) {
-                        Icon(Icons.Default.Mic, contentDescription = "Suara (segera hadir)", tint = Muted, modifier = Modifier.padding(10.dp))
-                    } else {
-                        Button(
-                            onClick = {
-                                if (draft.isNotBlank()) {
-                                    messages.add(draft.trim())
-                                    draft = ""
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Accent),
-                            shape = CircleShape,
-                            modifier = Modifier.size(44.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                        ) {
-                            Icon(Icons.Default.Send, contentDescription = "Kirim", tint = Color.White)
+                        Spacer(Modifier.weight(1f))
+                        if (draft.isBlank()) {
+                            Icon(Icons.Default.Mic, contentDescription = "Suara (segera hadir)", tint = Muted, modifier = Modifier.padding(10.dp))
+                        } else {
+                            Button(
+                                onClick = {
+                                    if (draft.isNotBlank()) {
+                                        messages = messages + draft.trim()
+                                        draft = ""
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Accent),
+                                shape = CircleShape,
+                                modifier = Modifier.size(44.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                            ) {
+                                Icon(Icons.Default.Send, contentDescription = "Kirim", tint = Color.White)
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+
+    if (attachmentSheetOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { attachmentSheetOpen = false },
+            sheetState = sheetState,
+            containerColor = Color(0xFF171C2B),
+            contentColor = Color.White,
+            dragHandle = { androidx.compose.material3.BottomSheetDefaults.DragHandle(color = Muted) }
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Tambahkan ke JR AI", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                AttachmentOption("Foto dari galeri", "Pilih foto dari perangkat", Icons.Default.Image) {
+                    attachmentSheetOpen = false
+                    onPhoto()
+                }
+                AttachmentOption("Buat gambar", "Hasilkan gambar dari deskripsi teks", Icons.Default.AutoAwesome) {
+                    attachmentSheetOpen = false
+                    onPhoto()
+                }
+                AttachmentOption("Buat video", "Buat video dari teks atau foto", Icons.Default.Movie) {
+                    attachmentSheetOpen = false
+                    onVideo()
+                }
+                AttachmentOption("Galeri saya", "Lihat hasil yang tersimpan", Icons.Default.Collections) {
+                    attachmentSheetOpen = false
+                    onGallery()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AttachmentOption(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .background(Color(0xFF242B40), RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.size(42.dp).background(Color(0xFF343B58), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = Color.White)
+        }
+        Column(modifier = Modifier.padding(start = 13.dp)) {
+            Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, color = Muted, fontSize = 11.sp)
         }
     }
 }
