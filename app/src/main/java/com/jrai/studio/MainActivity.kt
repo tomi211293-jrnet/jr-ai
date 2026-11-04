@@ -1,11 +1,14 @@
 package com.jrai.studio
 
 import android.os.Bundle
+import android.graphics.BitmapFactory
+import android.util.Base64
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -73,6 +76,8 @@ import java.net.URL
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -85,7 +90,54 @@ private val Muted = Color(0xFFA7AEC3)
 
 private enum class AppPage { CHAT, PHOTO, VIDEO, GALLERY }
 
-private data class ChatMessage(val role: String, val content: String)
+private data class ChatMessage(
+    val role: String,
+    val content: String,
+    val imageBase64: String? = null
+)
+
+private fun isImageGenerationRequest(text: String): Boolean {
+    val normalized = text.lowercase()
+    val triggers = listOf(
+        "buat gambar", "buatkan gambar", "bikin gambar", "hasilkan gambar",
+        "generate gambar", "buat foto", "buatkan foto", "bikin foto",
+        "hasilkan foto", "generate foto", "buat ilustrasi", "buat lukisan"
+    )
+    return triggers.any { normalized.contains(it) }
+}
+
+private suspend fun requestJrAiImage(prompt: String): String = withContext(Dispatchers.IO) {
+    val connection = (URL("https://jr-ai-backend.tomi211293.workers.dev/generate-image").openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"
+        connectTimeout = 20000
+        readTimeout = 180000
+        doOutput = true
+        setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        setRequestProperty("Accept", "application/json")
+    }
+
+    try {
+        val requestBody = JSONObject().put("prompt", prompt.take(1800)).toString()
+        connection.outputStream.use { output ->
+            output.write(requestBody.toByteArray(Charsets.UTF_8))
+        }
+
+        val responseCode = connection.responseCode
+        val responseStream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
+        val responseText = responseStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+        val responseJson = try { JSONObject(responseText) } catch (_: Exception) { JSONObject() }
+
+        if (responseCode !in 200..299 || !responseJson.optBoolean("success", false)) {
+            throw IOException(responseJson.optString("error").ifBlank {
+                "Generator gambar gagal (HTTP $responseCode)."
+            })
+        }
+        responseJson.optString("image").takeIf { it.isNotBlank() }
+            ?: throw IOException("Generator belum mengirim hasil gambar.")
+    } finally {
+        connection.disconnect()
+    }
+}
 
 private suspend fun requestJrAiReply(history: List<ChatMessage>): String = withContext(Dispatchers.IO) {
     val connection = (URL("https://jr-ai-backend.tomi211293.workers.dev/chat").openConnection() as HttpURLConnection).apply {
@@ -284,7 +336,29 @@ private fun ChatScreen(onPhoto: () -> Unit, onVideo: () -> Unit, onGallery: () -
                         } else {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
                                 Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
-                                    Text(message.content, color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(14.dp))
+                                    if (message.imageBase64 != null) {
+                                        val bitmap = remember(message.imageBase64) {
+                                            try {
+                                                val bytes = Base64.decode(message.imageBase64, Base64.DEFAULT)
+                                                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                                            } catch (_: Exception) { null }
+                                        }
+                                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            if (bitmap != null) {
+                                                Image(
+                                                    bitmap = bitmap,
+                                                    contentDescription = "Gambar hasil AI",
+                                                    modifier = Modifier.fillMaxWidth().height(280.dp),
+                                                    contentScale = ContentScale.Fit
+                                                )
+                                            } else {
+                                                Text("Gambar diterima tetapi tidak dapat ditampilkan.", color = Color.White, fontSize = 13.sp)
+                                            }
+                                            Text(message.content, color = Muted, fontSize = 12.sp)
+                                        }
+                                    } else {
+                                        Text(message.content, color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(14.dp))
+                                    }
                                 }
                             }
                         }
@@ -341,8 +415,13 @@ private fun ChatScreen(onPhoto: () -> Unit, onVideo: () -> Unit, onGallery: () -
                                             isSending = true
                                             scope.launch {
                                                 try {
-                                                    val reply = requestJrAiReply(messages.toList())
-                                                    messages.add(ChatMessage("assistant", reply))
+                                                    if (isImageGenerationRequest(textToSend)) {
+                                                        val image = requestJrAiImage(textToSend)
+                                                        messages.add(ChatMessage("assistant", "Gambar berhasil dibuat.", image))
+                                                    } else {
+                                                        val reply = requestJrAiReply(messages.toList())
+                                                        messages.add(ChatMessage("assistant", reply))
+                                                    }
                                                 } catch (error: Exception) {
                                                     statusMessage = error.message ?: "Tidak dapat terhubung ke JR AI."
                                                 } finally {
