@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -179,7 +180,7 @@ private fun ChatScreen(onPhoto: () -> Unit, onVideo: () -> Unit, onGallery: () -
             }
         }
     ) {
-        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp)) {
+        Column(modifier = Modifier.fillMaxSize().imePadding().padding(horizontal = 14.dp, vertical = 8.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 30.dp).height(48.dp),
                 verticalAlignment = Alignment.CenterVertically
