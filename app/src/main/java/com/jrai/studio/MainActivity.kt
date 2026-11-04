@@ -1,6 +1,9 @@
 package com.jrai.studio
 
 import android.os.Bundle
+import android.content.ClipData
+import android.content.Context
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -37,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +59,20 @@ private val Accent = Color(0xFF8B7CFF)
 private val Muted = Color(0xFFA7AEC3)
 
 private enum class AppPage { HOME, PHOTO, VIDEO, GALLERY }
+
+
+private fun shareToAi(context: Context, prompt: String, imageUri: android.net.Uri? = null) {
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+        type = if (imageUri != null) "image/*" else "text/plain"
+        putExtra(Intent.EXTRA_TEXT, prompt)
+        if (imageUri != null) {
+            putExtra(Intent.EXTRA_STREAM, imageUri)
+            clipData = ClipData.newUri(context.contentResolver, "Foto sumber JR AI", imageUri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    }
+    context.startActivity(Intent.createChooser(sendIntent, "Kirim ke Grok atau aplikasi AI"))
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -151,6 +169,7 @@ private fun FeatureCard(title: String, subtitle: String, icon: @Composable () ->
 
 @Composable
 private fun PhotoScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
     var selectedPhoto by remember { mutableStateOf<android.net.Uri?>(null) }
     var editPrompt by remember { mutableStateOf("") }
     var createPrompt by remember { mutableStateOf("") }
@@ -180,12 +199,16 @@ private fun PhotoScreen(onBack: () -> Unit) {
         )
         Button(
             onClick = {
-                message = if (createPrompt.isBlank()) "Tuliskan prompt gambar terlebih dahulu."
-                else "Prompt siap. Generator AI belum dihubungkan, sehingga gambar belum dapat dibuat."
+                if (createPrompt.isBlank()) {
+                    message = "Tuliskan prompt gambar terlebih dahulu."
+                } else {
+                    shareToAi(context, "Buat gambar berdasarkan prompt berikut:\n$createPrompt")
+                    message = "Pilih Grok pada menu berbagi. Jika Grok tidak muncul, salin prompt dan buka grok.com."
+                }
             },
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = Accent)
-        ) { Text("Buat Foto dari Teks", color = Color.White) }
+        ) { Text("Kirim Prompt ke Grok", color = Color.White) }
         Text("EDIT FOTO DENGAN PROMPT", color = Color(0xFFC9C2FF), fontWeight = FontWeight.Bold)
         Text("Pilih foto dari HP, lalu tuliskan perubahan yang kamu inginkan.", color = Muted, fontSize = 13.sp)
         OutlinedButton(onClick = { photoPicker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
@@ -205,22 +228,26 @@ private fun PhotoScreen(onBack: () -> Unit) {
         )
         Button(
             onClick = {
-                message = when {
-                    selectedPhoto == null -> "Pilih foto dari HP terlebih dahulu."
-                    editPrompt.isBlank() -> "Tuliskan prompt edit foto terlebih dahulu."
-                    else -> "Foto dan prompt siap. Mesin AI belum dihubungkan, sehingga hasil edit belum dapat dibuat."
+                when {
+                    selectedPhoto == null -> message = "Pilih foto dari HP terlebih dahulu."
+                    editPrompt.isBlank() -> message = "Tuliskan prompt edit foto terlebih dahulu."
+                    else -> {
+                        shareToAi(context, "Edit foto terlampir sesuai instruksi berikut. Pertahankan identitas dan detail asli kecuali yang diminta diubah.\n\nInstruksi: $editPrompt", selectedPhoto)
+                        message = "Pilih Grok pada menu berbagi untuk mengirim foto dan instruksi."
+                    }
                 }
             },
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = Accent)
-        ) { Text("Edit Foto dengan AI", color = Color.White) }
+        ) { Text("Kirim Foto + Prompt ke Grok", color = Color.White) }
         if (message.isNotBlank()) Text(message, color = Color(0xFFFFD27A), fontSize = 13.sp)
-        Text("Pemilihan foto dan prompt tersedia. Generator AI akan dihubungkan pada tahap berikutnya.", color = Muted, fontSize = 12.sp)
+        Text("JR AI menyiapkan prompt dan membagikan foto ke aplikasi AI pilihanmu. Hasil dibuat di layanan tujuan, bukan langsung di JR AI.", color = Muted, fontSize = 12.sp)
     }
 }
 
 @Composable
 private fun VideoScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
     var selectedPhoto by remember { mutableStateOf<android.net.Uri?>(null) }
     var prompt by remember { mutableStateOf("") }
     var duration by remember { mutableStateOf("5 detik") }
@@ -271,17 +298,20 @@ private fun VideoScreen(onBack: () -> Unit) {
         }
         Button(
             onClick = {
-                message = when {
-                    selectedPhoto == null -> "Pilih foto dari galeri terlebih dahulu."
-                    prompt.isBlank() -> "Tuliskan prompt gerakan video terlebih dahulu."
-                    else -> "Foto, prompt, dan durasi sudah siap. Mesin AI image-to-video belum dihubungkan, jadi video belum dapat dirender."
+                when {
+                    selectedPhoto == null -> message = "Pilih foto dari galeri terlebih dahulu."
+                    prompt.isBlank() -> message = "Tuliskan prompt gerakan video terlebih dahulu."
+                    else -> {
+                        shareToAi(context, "Buat video dari foto terlampir. Durasi yang diinginkan: $duration.\nInstruksi gerakan: $prompt", selectedPhoto)
+                        message = "Pilih Grok pada menu berbagi. Ketersediaan pembuatan video mengikuti fitur dan batas akun Grok."
+                    }
                 }
             },
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = Accent)
-        ) { Text("Buat Video dari Foto", color = Color.White) }
+        ) { Text("Kirim Foto + Prompt Video", color = Color.White) }
         if (message.isNotBlank()) Text(message, color = Color(0xFFFFD27A), fontSize = 13.sp)
-        Text("Tahap ini menyiapkan foto dan instruksi. Generator AI video akan dihubungkan berikutnya.", color = Muted, fontSize = 12.sp)
+        Text("JR AI mengirim foto, prompt, dan durasi melalui menu berbagi. Pembuatan video mengikuti dukungan dan batas akun layanan tujuan.", color = Muted, fontSize = 12.sp)
     }
 }
 
