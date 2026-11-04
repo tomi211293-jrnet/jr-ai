@@ -77,13 +77,7 @@ private fun JrAiApp() {
                     onGallery = { currentPage = AppPage.GALLERY }
                 )
                 AppPage.PHOTO -> PhotoScreen(onBack = { currentPage = AppPage.HOME })
-                AppPage.VIDEO -> ToolScreen(
-                    title = "Video AI",
-                    description = "Tuliskan konsep video yang ingin kamu buat.",
-                    hint = "Contoh: video sinematik suasana pegunungan...",
-                    actionLabel = "Buat Video",
-                    onBack = { currentPage = AppPage.HOME }
-                )
+                AppPage.VIDEO -> VideoScreen(onBack = { currentPage = AppPage.HOME })
                 AppPage.GALLERY -> GalleryScreen(onBack = { currentPage = AppPage.HOME })
             }
         }
@@ -222,6 +216,72 @@ private fun PhotoScreen(onBack: () -> Unit) {
         ) { Text("Edit Foto dengan AI", color = Color.White) }
         if (message.isNotBlank()) Text(message, color = Color(0xFFFFD27A), fontSize = 13.sp)
         Text("Pemilihan foto dan prompt tersedia. Generator AI akan dihubungkan pada tahap berikutnya.", color = Muted, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun VideoScreen(onBack: () -> Unit) {
+    var selectedPhoto by remember { mutableStateOf<android.net.Uri?>(null) }
+    var prompt by remember { mutableStateOf("") }
+    var duration by remember { mutableStateOf("5 detik") }
+    var message by remember { mutableStateOf("") }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        selectedPhoto = uri
+        message = if (uri != null) "Foto berhasil dipilih sebagai bahan video." else ""
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(Icons.Default.ArrowBack, contentDescription = "Kembali", tint = Color.White,
+                modifier = Modifier.clickable(onClick = onBack).padding(6.dp))
+            Text("Video AI", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        }
+        Text("UBAH FOTO MENJADI VIDEO", color = Color(0xFFC9C2FF), fontWeight = FontWeight.Bold)
+        Text("Pilih satu foto dari galeri HP. Kemudian jelaskan gerakan atau suasana yang ingin ditambahkan.", color = Muted, fontSize = 13.sp)
+        OutlinedButton(onClick = { photoPicker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Image, contentDescription = null)
+            Text(if (selectedPhoto == null) "Pilih Foto untuk Video" else "Ganti Foto")
+        }
+        if (selectedPhoto != null) {
+            Text("Foto sumber sudah dipilih", color = Color(0xFF8FE3AE), fontSize = 13.sp)
+        }
+        Text("PROMPT GERAKAN VIDEO", color = Color(0xFFC9C2FF), fontWeight = FontWeight.Bold)
+        OutlinedTextField(
+            value = prompt,
+            onValueChange = { prompt = it; message = "" },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 4,
+            label = { Text("Jelaskan gerakan yang diinginkan") },
+            placeholder = { Text("Contoh: buat orang di foto tersenyum dan menoleh perlahan ke kamera, rambut tertiup angin, gerakan natural, kamera perlahan mendekat...") }
+        )
+        Text("DURASI VIDEO", color = Color(0xFFC9C2FF), fontWeight = FontWeight.Bold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("5 detik", "10 detik").forEach { item ->
+                val selected = duration == item
+                OutlinedButton(
+                    onClick = { duration = item },
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = if (selected) Color.White else Muted
+                    )
+                ) { Text(item) }
+            }
+        }
+        Button(
+            onClick = {
+                message = when {
+                    selectedPhoto == null -> "Pilih foto dari galeri terlebih dahulu."
+                    prompt.isBlank() -> "Tuliskan prompt gerakan video terlebih dahulu."
+                    else -> "Foto, prompt, dan durasi sudah siap. Mesin AI image-to-video belum dihubungkan, jadi video belum dapat dirender."
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Accent)
+        ) { Text("Buat Video dari Foto", color = Color.White) }
+        if (message.isNotBlank()) Text(message, color = Color(0xFFFFD27A), fontSize = 13.sp)
+        Text("Tahap ini menyiapkan foto dan instruksi. Generator AI video akan dihubungkan berikutnya.", color = Muted, fontSize = 12.sp)
     }
 }
 
