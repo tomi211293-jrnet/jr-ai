@@ -18,7 +18,7 @@ jobs:
       - name: Checkout backend source
         uses: actions/checkout@v4
         with:
-          ref: feature/cloudflare-ai-backend
+          ref: main
 
       - name: Validate Worker configuration (dry run)
         uses: cloudflare/wrangler-action@v4
