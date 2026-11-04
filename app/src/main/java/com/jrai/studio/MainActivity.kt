@@ -76,8 +76,7 @@ private fun JrAiApp() {
                         ).padding(22.dp)
                 ) {
                     Column {
-                        Text("Wujudkan ide
-jadi karya.", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+                        Text("Wujudkan ide\njadi karya.", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(8.dp))
                         Text("Buat kreasi foto dan video dengan bantuan AI.", color = Muted, fontSize = 14.sp)
                         Spacer(Modifier.height(18.dp))
