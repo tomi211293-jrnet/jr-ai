@@ -74,6 +74,7 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
@@ -182,6 +183,33 @@ private suspend fun requestJrAiReply(history: List<ChatMessage>): String = withC
             ?: throw IOException("JR AI belum memberikan jawaban.")
     } finally {
         connection.disconnect()
+    }
+}
+
+@Composable
+private fun SaveImageButton(imageBase64: String) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var saveStatus by remember { mutableStateOf("") }
+    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
+        if (uri != null) scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val bytes = Base64.decode(imageBase64, Base64.DEFAULT)
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                        ?: throw IOException("Tidak dapat membuka lokasi penyimpanan.")
+                }
+                saveStatus = "Gambar berhasil disimpan."
+            } catch (error: Exception) {
+                saveStatus = error.message ?: "Gagal menyimpan gambar."
+            }
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        OutlinedButton(onClick = { saveLauncher.launch("JR-AI-" + System.currentTimeMillis() + ".png") }, modifier = Modifier.fillMaxWidth()) {
+            Text("Download / Simpan Gambar")
+        }
+        if (saveStatus.isNotBlank()) Text(saveStatus, color = if (saveStatus.startsWith("Gambar berhasil")) Color(0xFF9DE6B2) else Color(0xFFFFD27A), fontSize = 12.sp)
     }
 }
 
@@ -355,6 +383,7 @@ private fun ChatScreen(onPhoto: () -> Unit, onVideo: () -> Unit, onGallery: () -
                                                 Text("Gambar diterima tetapi tidak dapat ditampilkan.", color = Color.White, fontSize = 13.sp)
                                             }
                                             Text(message.content, color = Muted, fontSize = 12.sp)
+                                             SaveImageButton(message.imageBase64)
                                         }
                                     } else {
                                         Text(message.content, color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(14.dp))
@@ -599,6 +628,7 @@ private fun PhotoScreen(onBack: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().height(320.dp),
                     contentScale = ContentScale.Fit
                 )
+                SaveImageButton(imageData)
             }
         }
     }
