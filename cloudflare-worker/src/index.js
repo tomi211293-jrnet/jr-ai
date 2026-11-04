@@ -3,6 +3,7 @@ const IMAGE_MODEL = "@cf/black-forest-labs/flux-1-schnell";
 const MAX_MESSAGES = 20;
 const MAX_MESSAGE_CHARS = 4000;
 const MAX_IMAGE_PROMPT_CHARS = 1800;
+const MAX_EDIT_IMAGE_CHARS = 2000000;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,7 +44,7 @@ export default {
       });
     }
 
-    if (request.method !== "POST" || !["/chat", "/generate-image"].includes(url.pathname)) {
+    if (request.method !== "POST" || !["/chat", "/generate-image", "/edit-photo"].includes(url.pathname)) {
       return json({ success: false, error: "Endpoint tidak ditemukan." }, 404);
     }
 
@@ -59,7 +60,7 @@ export default {
     let body;
     try {
       const raw = await request.text();
-      if (raw.length > 100_000) {
+      if (raw.length > 2_800_000) {
         return json({ success: false, error: "Permintaan terlalu besar." }, 413);
       }
       body = JSON.parse(raw);
@@ -94,6 +95,36 @@ export default {
           success: false,
           error: "Generator gambar sedang tidak tersedia. Periksa kuota Workers AI atau coba lagi nanti.",
         }, 503);
+      }
+    }
+
+
+    if (url.pathname === "/edit-photo") {
+      const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
+      const image = typeof body?.image === "string" ? body.image.trim() : "";
+      if (!prompt || prompt.length > 1200) {
+        return json({ success: false, error: "Instruksi edit wajib diisi (maksimal 1.200 karakter)." }, 400);
+      }
+      if (!image || image.length > MAX_EDIT_IMAGE_CHARS) {
+        return json({ success: false, error: "Foto tidak valid atau terlalu besar. Pilih foto yang lebih kecil." }, 400);
+      }
+      try {
+        const result = await env.AI.run("@cf/runwayml/stable-diffusion-v1-5-img2img", {
+          prompt,
+          image_b64: image,
+          num_steps: 12,
+          strength: 0.65,
+          guidance: 7.5,
+        });
+        const bytes = new Uint8Array(await new Response(result).arrayBuffer());
+        if (bytes.length === 0) return json({ success: false, error: "Mesin AI belum menghasilkan foto." }, 502);
+        let binary = "";
+        for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+          binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+        }
+        return json({ success: true, image: btoa(binary), mimeType: "image/png" });
+      } catch {
+        return json({ success: false, error: "Edit foto belum tersedia. Periksa kuota Workers AI atau coba lagi nanti." }, 503);
       }
     }
 
