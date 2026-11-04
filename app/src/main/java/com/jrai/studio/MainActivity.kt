@@ -67,8 +67,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -115,7 +113,7 @@ private suspend fun requestJrAiReply(history: List<ChatMessage>): String = withC
 
         val responseCode = connection.responseCode
         val responseStream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
-        val responseText = responseStream?.bufferedReader(Charsets.UTF_8)?.use(BufferedReader::readText).orEmpty()
+        val responseText = responseStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
         val responseJson = try {
             JSONObject(responseText)
         } catch (_: Exception) {
