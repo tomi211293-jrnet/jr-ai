@@ -245,41 +245,29 @@ private fun ChatScreen(onPhoto: () -> Unit, onVideo: () -> Unit, onGallery: () -
                         minLines = 2,
                         maxLines = 6,
                         placeholder = { Text("Tanyakan apa saja", color = Muted) },
-                        shape = RoundedCornerShape(18.dp)
-                    )
-                    Spacer(Modifier.height(5.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedButton(
-                            onClick = { attachmentSheetOpen = true },
-                            shape = CircleShape,
-                            modifier = Modifier.size(42.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = "Lampiran", tint = Color.White)
-                        }
-                        Spacer(Modifier.weight(1f))
-                        if (draft.isBlank()) {
-                            Icon(Icons.Default.Mic, contentDescription = "Suara (segera hadir)", tint = Muted, modifier = Modifier.padding(10.dp))
-                        } else {
-                            Button(
-                                onClick = {
-                                    if (draft.isNotBlank()) {
+                        leadingIcon = {
+                            IconButton(onClick = { attachmentSheetOpen = true }) {
+                                Icon(Icons.Default.Add, contentDescription = "Lampiran", tint = Color.White)
+                            }
+                        },
+                        trailingIcon = {
+                            if (draft.isBlank()) {
+                                IconButton(onClick = { }) {
+                                    Icon(Icons.Default.Mic, contentDescription = "Suara (segera hadir)", tint = Muted)
+                                }
+                            } else {
+                                IconButton(
+                                    onClick = {
                                         messages = messages + draft.trim()
                                         draft = ""
                                     }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Accent),
-                                shape = CircleShape,
-                                modifier = Modifier.size(44.dp),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                            ) {
-                                Icon(Icons.Default.Send, contentDescription = "Kirim", tint = Color.White)
+                                ) {
+                                    Icon(Icons.Default.Send, contentDescription = "Kirim", tint = Accent)
+                                }
                             }
-                        }
-                    }
+                        },
+                        shape = RoundedCornerShape(22.dp)
+                    )
                 }
             }
         }
