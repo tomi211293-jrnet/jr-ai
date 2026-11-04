@@ -1,6 +1,9 @@
 package com.jrai.studio
 
 import android.os.Bundle
+import android.content.Context
+import android.graphics.Bitmap
+import android.net.Uri
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.activity.ComponentActivity
@@ -71,6 +74,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import androidx.compose.ui.Alignment
@@ -80,6 +84,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -135,6 +140,52 @@ private suspend fun requestJrAiImage(prompt: String): String = withContext(Dispa
         }
         responseJson.optString("image").takeIf { it.isNotBlank() }
             ?: throw IOException("Generator belum mengirim hasil gambar.")
+    } finally {
+        connection.disconnect()
+    }
+}
+
+
+private suspend fun encodePhotoForEditing(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {
+    val original = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+        ?: throw IOException("Foto tidak dapat dibaca. Pilih foto lain.")
+    val longest = maxOf(original.width, original.height).coerceAtLeast(1)
+    val scale = minOf(1f, 768f / longest.toFloat())
+    val resized = if (scale < 1f) Bitmap.createScaledBitmap(
+        original, (original.width * scale).toInt().coerceAtLeast(1),
+        (original.height * scale).toInt().coerceAtLeast(1), true
+    ) else original
+    try {
+        val output = ByteArrayOutputStream()
+        resized.compress(Bitmap.CompressFormat.JPEG, 82, output)
+        Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+    } finally {
+        if (resized !== original) resized.recycle()
+        original.recycle()
+    }
+}
+
+private suspend fun requestJrAiPhotoEdit(prompt: String, imageBase64: String): String = withContext(Dispatchers.IO) {
+    val connection = (URL("https://jr-ai-backend.tomi211293.workers.dev/edit-photo").openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"
+        connectTimeout = 20000
+        readTimeout = 180000
+        doOutput = true
+        setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        setRequestProperty("Accept", "application/json")
+    }
+    try {
+        val requestBody = JSONObject().put("prompt", prompt.take(1200)).put("image", imageBase64).toString()
+        connection.outputStream.use { it.write(requestBody.toByteArray(Charsets.UTF_8)) }
+        val responseCode = connection.responseCode
+        val stream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
+        val responseText = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+        val responseJson = try { JSONObject(responseText) } catch (_: Exception) { JSONObject() }
+        if (responseCode !in 200..299 || !responseJson.optBoolean("success", false)) {
+            throw IOException(responseJson.optString("error").ifBlank { "Edit foto gagal (HTTP $responseCode)." })
+        }
+        responseJson.optString("image").takeIf { it.isNotBlank() }
+            ?: throw IOException("Mesin edit belum mengirim hasil foto.")
     } finally {
         connection.disconnect()
     }
@@ -545,6 +596,7 @@ private fun SuggestionCard(label: String, onClick: () -> Unit) {
 
 @Composable
 private fun PhotoScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
     var selectedPhoto by remember { mutableStateOf<android.net.Uri?>(null) }
     var editPrompt by remember { mutableStateOf("") }
     var createPrompt by remember { mutableStateOf("") }
@@ -578,6 +630,38 @@ private fun PhotoScreen(onBack: () -> Unit) {
             minLines = 3, label = { Text("Instruksi edit foto") },
             placeholder = { Text("Contoh: ubah latar menjadi pantai saat senja...") }
         )
+        Button(
+            onClick = {
+                if (selectedPhoto == null) {
+                    message = "Pilih foto dari HP terlebih dahulu."
+                } else if (editPrompt.isBlank()) {
+                    message = "Tuliskan instruksi perubahan foto terlebih dahulu."
+                } else if (!isGenerating) {
+                    isGenerating = true
+                    generatedImage = null
+                    message = "JR AI sedang mengedit foto..."
+                    scope.launch {
+                        try {
+                            val encodedPhoto = encodePhotoForEditing(context, selectedPhoto!!)
+                            generatedImage = requestJrAiPhotoEdit(editPrompt, encodedPhoto)
+                            message = "Foto berhasil diedit."
+                        } catch (error: Exception) {
+                            message = error.message ?: "Gagal mengedit foto. Coba lagi."
+                        } finally {
+                            isGenerating = false
+                        }
+                    }
+                }
+            },
+            enabled = !isGenerating,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Accent)
+        ) {
+            if (isGenerating) {
+                androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                Text("Sedang mengedit...", color = Color.White)
+            } else Text("Edit Foto dengan AI", color = Color.White)
+        }
         Button(
             onClick = {
                 if (createPrompt.isBlank()) {
