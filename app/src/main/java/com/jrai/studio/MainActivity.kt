@@ -181,7 +181,7 @@ private fun ChatScreen(onPhoto: () -> Unit, onVideo: () -> Unit, onGallery: () -
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp)) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(48.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 30.dp).height(48.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = { scope.launch { drawerState.open() } }) {
