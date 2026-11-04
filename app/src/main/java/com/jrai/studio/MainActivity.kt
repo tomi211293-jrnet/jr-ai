@@ -520,6 +520,9 @@ private fun PhotoScreen(onBack: () -> Unit) {
     var editPrompt by remember { mutableStateOf("") }
     var createPrompt by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
+    var generatedImage by remember { mutableStateOf<String?>(null) }
+    var isGenerating by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         selectedPhoto = uri
         message = if (uri != null) "Foto berhasil dipilih." else ""
@@ -548,16 +551,56 @@ private fun PhotoScreen(onBack: () -> Unit) {
         )
         Button(
             onClick = {
-                message = when {
-                    createPrompt.isBlank() && (selectedPhoto == null || editPrompt.isBlank()) -> "Isi prompt atau pilih foto dan tulis instruksi."
-                    else -> "Tampilan siap. Generator AI belum dihubungkan; belum ada gambar yang dibuat."
+                if (createPrompt.isBlank()) {
+                    message = "Tuliskan deskripsi gambar terlebih dahulu."
+                } else if (!isGenerating) {
+                    isGenerating = true
+                    generatedImage = null
+                    message = "JR AI sedang membuat gambar..."
+                    scope.launch {
+                        try {
+                            generatedImage = requestJrAiImage(createPrompt)
+                            message = "Gambar berhasil dibuat."
+                        } catch (error: Exception) {
+                            message = error.message ?: "Gagal membuat gambar. Coba lagi."
+                        } finally {
+                            isGenerating = false
+                        }
+                    }
                 }
             },
+            enabled = !isGenerating,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = Accent)
-        ) { Text("Generate Foto", color = Color.White) }
-        if (message.isNotBlank()) Text(message, color = Color(0xFFFFD27A), fontSize = 13.sp)
-        Text("Hasil akan ditampilkan di JR AI setelah mesin generator terhubung.", color = Muted, fontSize = 12.sp)
+        ) {
+            if (isGenerating) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    color = Color.White,
+                    strokeWidth = 2.dp
+                )
+                Text("Sedang membuat...", color = Color.White)
+            } else {
+                Text("Generate Foto", color = Color.White)
+            }
+        }
+        if (message.isNotBlank()) Text(message, color = if (generatedImage != null) Color(0xFF9DE6B2) else Color(0xFFFFD27A), fontSize = 13.sp)
+        generatedImage?.let { imageData ->
+            val bitmap = remember(imageData) {
+                try {
+                    val bytes = Base64.decode(imageData, Base64.DEFAULT)
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                } catch (_: Exception) { null }
+            }
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = "Hasil gambar JR AI",
+                    modifier = Modifier.fillMaxWidth().height(320.dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
+        }
     }
 }
 
