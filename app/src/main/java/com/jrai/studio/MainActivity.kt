@@ -1,6 +1,9 @@
 package com.jrai.studio
 
 import android.os.Bundle
+import android.content.Context
+import android.graphics.Bitmap
+import android.net.Uri
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.activity.ComponentActivity
@@ -56,6 +59,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -71,6 +75,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import androidx.compose.ui.Alignment
@@ -135,6 +140,52 @@ private suspend fun requestJrAiImage(prompt: String): String = withContext(Dispa
         }
         responseJson.optString("image").takeIf { it.isNotBlank() }
             ?: throw IOException("Generator belum mengirim hasil gambar.")
+    } finally {
+        connection.disconnect()
+    }
+}
+
+
+private suspend fun encodePhotoForEditing(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {
+    val original = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+        ?: throw IOException("Foto tidak dapat dibaca. Pilih foto lain.")
+    val longest = maxOf(original.width, original.height).coerceAtLeast(1)
+    val scale = minOf(1f, 768f / longest.toFloat())
+    val resized = if (scale < 1f) Bitmap.createScaledBitmap(
+        original, (original.width * scale).toInt().coerceAtLeast(1),
+        (original.height * scale).toInt().coerceAtLeast(1), true
+    ) else original
+    try {
+        val output = ByteArrayOutputStream()
+        resized.compress(Bitmap.CompressFormat.JPEG, 82, output)
+        Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+    } finally {
+        if (resized !== original) resized.recycle()
+        original.recycle()
+    }
+}
+
+private suspend fun requestJrAiPhotoEdit(prompt: String, imageBase64: String): String = withContext(Dispatchers.IO) {
+    val connection = (URL("https://jr-ai-backend.tomi211293.workers.dev/edit-photo").openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"
+        connectTimeout = 20000
+        readTimeout = 180000
+        doOutput = true
+        setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        setRequestProperty("Accept", "application/json")
+    }
+    try {
+        val requestBody = JSONObject().put("prompt", prompt.take(1200)).put("image", imageBase64).toString()
+        connection.outputStream.use { it.write(requestBody.toByteArray(Charsets.UTF_8)) }
+        val responseCode = connection.responseCode
+        val stream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
+        val responseText = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+        val responseJson = try { JSONObject(responseText) } catch (_: Exception) { JSONObject() }
+        if (responseCode !in 200..299 || !responseJson.optBoolean("success", false)) {
+            throw IOException(responseJson.optString("error").ifBlank { "Edit foto gagal (HTTP $responseCode)." })
+        }
+        responseJson.optString("image").takeIf { it.isNotBlank() }
+            ?: throw IOException("Mesin edit belum mengirim hasil foto.")
     } finally {
         connection.disconnect()
     }
@@ -545,6 +596,7 @@ private fun SuggestionCard(label: String, onClick: () -> Unit) {
 
 @Composable
 private fun PhotoScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
     var selectedPhoto by remember { mutableStateOf<android.net.Uri?>(null) }
     var editPrompt by remember { mutableStateOf("") }
     var createPrompt by remember { mutableStateOf("") }
@@ -556,64 +608,161 @@ private fun PhotoScreen(onBack: () -> Unit) {
         selectedPhoto = uri
         message = if (uri != null) "Foto berhasil dipilih." else ""
     }
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = Color.White,
+        unfocusedTextColor = Color.White,
+        disabledTextColor = Muted,
+        cursorColor = Accent,
+        focusedBorderColor = Accent,
+        unfocusedBorderColor = Color(0xFF46506A),
+        focusedLabelColor = Color(0xFFC9C2FF),
+        unfocusedLabelColor = Muted,
+        focusedPlaceholderColor = Muted,
+        unfocusedPlaceholderColor = Muted
+    )
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         PageHeader("Buat Foto", onBack)
-        Text("FOTO DARI TEKS", color = Color(0xFFC9C2FF), fontWeight = FontWeight.Bold)
-        OutlinedTextField(
-            value = createPrompt, onValueChange = { createPrompt = it }, modifier = Modifier.fillMaxWidth(),
-            minLines = 3, label = { Text("Jelaskan foto yang kamu inginkan") },
-            placeholder = { Text("Contoh: foto sinematik motor di jalan saat hujan malam...") }
-        )
-        Text("FOTO DARI FOTO", color = Color(0xFFC9C2FF), fontWeight = FontWeight.Bold)
-        Text("Pilih foto, lalu jelaskan bagian yang ingin diubah.", color = Muted, fontSize = 13.sp)
-        OutlinedButton(onClick = { photoPicker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Default.Image, contentDescription = null)
-            Text(if (selectedPhoto == null) "Pilih Foto dari HP" else "Ganti Foto")
-        }
-        OutlinedTextField(
-            value = editPrompt, onValueChange = { editPrompt = it }, modifier = Modifier.fillMaxWidth(),
-            minLines = 3, label = { Text("Instruksi edit foto") },
-            placeholder = { Text("Contoh: ubah latar menjadi pantai saat senja...") }
-        )
-        Button(
-            onClick = {
-                if (createPrompt.isBlank()) {
-                    message = "Tuliskan deskripsi gambar terlebih dahulu."
-                } else if (!isGenerating) {
-                    isGenerating = true
-                    generatedImage = null
-                    message = "JR AI sedang membuat gambar..."
-                    scope.launch {
-                        try {
-                            generatedImage = requestJrAiImage(createPrompt)
-                            message = "Gambar berhasil dibuat."
-                        } catch (error: Exception) {
-                            message = error.message ?: "Gagal membuat gambar. Coba lagi."
-                        } finally {
-                            isGenerating = false
-                        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Panel),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Accent)
+                    Text(" Edit foto dengan AI", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
+                Text(
+                    "Masukkan foto, lalu ceritakan perubahan yang kamu inginkan.",
+                    color = Muted, fontSize = 13.sp
+                )
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(174.dp)
+                        .background(Color(0xFF0D1220), RoundedCornerShape(16.dp))
+                        .clickable { photoPicker.launch("image/*") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.Collections, contentDescription = null, tint = Color(0xFFC9C2FF), modifier = Modifier.size(34.dp))
+                        Text(
+                            if (selectedPhoto == null) "Pilih foto dari galeri" else "Foto siap diedit",
+                            color = Color.White, fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            if (selectedPhoto == null) "JPG atau PNG • Ketuk untuk memilih" else "Ketuk untuk mengganti foto",
+                            color = Muted, fontSize = 12.sp
+                        )
                     }
                 }
-            },
-            enabled = !isGenerating,
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Accent)
-        ) {
-            if (isGenerating) {
-                androidx.compose.material3.CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    color = Color.White,
-                    strokeWidth = 2.dp
+                OutlinedTextField(
+                    value = editPrompt,
+                    onValueChange = { editPrompt = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    colors = fieldColors,
+                    label = { Text("Apa yang ingin diubah?", color = Color.White) },
+                    placeholder = { Text("Contoh: ganti latar menjadi pantai saat senja, pertahankan wajah dan pose...") }
                 )
-                Text("Sedang membuat...", color = Color.White)
-            } else {
-                Text("Generate Foto", color = Color.White)
+                Button(
+                    onClick = {
+                        if (selectedPhoto == null) {
+                            message = "Pilih foto dari HP terlebih dahulu."
+                        } else if (editPrompt.isBlank()) {
+                            message = "Tuliskan instruksi perubahan foto terlebih dahulu."
+                        } else if (!isGenerating) {
+                            isGenerating = true
+                            generatedImage = null
+                            message = "JR AI sedang mengedit foto..."
+                            scope.launch {
+                                try {
+                                    val encodedPhoto = encodePhotoForEditing(context, selectedPhoto!!)
+                                    generatedImage = requestJrAiPhotoEdit(editPrompt, encodedPhoto)
+                                    message = "Foto berhasil diedit."
+                                } catch (error: Exception) {
+                                    message = error.message ?: "Gagal mengedit foto. Coba lagi."
+                                } finally {
+                                    isGenerating = false
+                                }
+                            }
+                        }
+                    },
+                    enabled = !isGenerating,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Accent)
+                ) {
+                    if (isGenerating) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp
+                        )
+                        Text("  Sedang mengedit...", color = Color.White)
+                    } else {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White)
+                        Text("  Edit foto", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    }
+                }
             }
         }
-        if (message.isNotBlank()) Text(message, color = if (generatedImage != null) Color(0xFF9DE6B2) else Color(0xFFFFD27A), fontSize = 13.sp)
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Panel),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("Buat gambar dari teks", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                OutlinedTextField(
+                    value = createPrompt,
+                    onValueChange = { createPrompt = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    colors = fieldColors,
+                    label = { Text("Deskripsikan gambar", color = Color.White) },
+                    placeholder = { Text("Contoh: foto sinematik motor di jalan saat hujan malam...") }
+                )
+                Button(
+                    onClick = {
+                        if (createPrompt.isBlank()) {
+                            message = "Tuliskan deskripsi gambar terlebih dahulu."
+                        } else if (!isGenerating) {
+                            isGenerating = true
+                            generatedImage = null
+                            message = "JR AI sedang membuat gambar..."
+                            scope.launch {
+                                try {
+                                    generatedImage = requestJrAiImage(createPrompt)
+                                    message = "Gambar berhasil dibuat."
+                                } catch (error: Exception) {
+                                    message = error.message ?: "Gagal membuat gambar. Coba lagi."
+                                } finally {
+                                    isGenerating = false
+                                }
+                            }
+                        }
+                    },
+                    enabled = !isGenerating,
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Accent)
+                ) {
+                    Text("Generate gambar", color = Color.White, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+
+        if (message.isNotBlank()) {
+            Text(message, color = if (generatedImage != null) Color(0xFF9DE6B2) else Color(0xFFFFD27A), fontSize = 13.sp)
+        }
         generatedImage?.let { imageData ->
             val bitmap = remember(imageData) {
                 try {
