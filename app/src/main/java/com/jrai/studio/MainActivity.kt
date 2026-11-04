@@ -29,7 +29,10 @@ import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -91,107 +94,125 @@ private fun JrAiApp() {
 @Composable
 private fun ChatScreen(onPhoto: () -> Unit, onVideo: () -> Unit, onGallery: () -> Unit) {
     var draft by remember { mutableStateOf("") }
+    var menuExpanded by remember { mutableStateOf(false) }
     val messages = remember { mutableStateListOf<String>() }
-    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp)) {
+
+    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.Center
         ) {
-            Column {
-                Text("JR AI", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
-                Text("ASISTEN PRIBADI • CREATIVE STUDIO", color = Muted, fontSize = 9.sp, letterSpacing = 1.sp)
-            }
-            Icon(Icons.Default.AutoAwesome, contentDescription = "JR AI", tint = Accent, modifier = Modifier.size(28.dp))
+            Text("JR AI", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            QuickAction("Foto", Icons.Default.Image, onPhoto, Modifier.weight(1f))
-            QuickAction("Video", Icons.Default.Movie, onVideo, Modifier.weight(1f))
-            QuickAction("Galeri", Icons.Default.Collections, onGallery, Modifier.weight(1f))
-        }
-        Spacer(Modifier.height(14.dp))
+
         if (messages.isEmpty()) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(
-                        modifier = Modifier.size(68.dp).background(
+                        modifier = Modifier.size(54.dp).background(
                             Brush.linearGradient(listOf(Color(0xFF5146A8), Color(0xFF24294A))), CircleShape
                         ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(32.dp))
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(27.dp))
                     }
-                    Text("Apa yang ingin kamu buat?", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        "Ceritakan ide, tanyakan sesuatu, atau kirim foto untuk memulai.",
-                        color = Muted, fontSize = 13.sp
-                    )
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        SuggestionCard("Bantu buat prompt foto sinematik", onClick = { draft = "Bantu aku membuat prompt foto sinematik." })
-                        SuggestionCard("Beri ide video dari sebuah foto", onClick = { draft = "Beri aku ide video menarik dari sebuah foto." })
-                        SuggestionCard("Buat konsep gambar realistis", onClick = { draft = "Bantu buat konsep gambar realistis." })
-                    }
+                    Text("Ada yang bisa saya bantu?", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                    Text("Tanyakan apa saja atau mulai buat sesuatu.", color = Muted, fontSize = 13.sp)
                 }
             }
         } else {
             Column(
-                modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 messages.forEach { message ->
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        Box(modifier = Modifier.background(Color(0xFF30345A), RoundedCornerShape(16.dp)).padding(12.dp)) {
+                        Box(
+                            modifier = Modifier.background(Color(0xFF30345A), RoundedCornerShape(20.dp)).padding(horizontal = 15.dp, vertical = 11.dp)
+                        ) {
                             Text(message, color = Color.White, fontSize = 14.sp)
                         }
                     }
                 }
                 Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
                     Text(
-                        "Pesanmu tersimpan di tampilan percakapan ini. Mesin AI belum dihubungkan, jadi JR AI belum bisa membalas atau membuat hasil. Tahap berikutnya adalah menyambungkan layanan AI.",
+                        "JR AI belum terhubung ke mesin AI. Pesan sudah masuk ke tampilan percakapan, tetapi balasan otomatis akan aktif setelah layanan AI disambungkan.",
                         color = Muted, fontSize = 13.sp, modifier = Modifier.padding(14.dp)
                     )
                 }
             }
         }
-        Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(22.dp)) {
-            Column(modifier = Modifier.padding(10.dp)) {
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Panel),
+            shape = RoundedCornerShape(26.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { draft = it },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2,
-                    placeholder = { Text("Tanyakan sesuatu kepada JR AI...", color = Muted) },
-                    shape = RoundedCornerShape(16.dp)
+                    maxLines = 6,
+                    placeholder = { Text("Tanyakan apa saja", color = Muted) },
+                    shape = RoundedCornerShape(18.dp)
                 )
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.AttachFile, contentDescription = "Lampiran foto (segera hadir)", tint = Muted)
-                    Text(" Foto dan suara segera hadir", color = Muted, fontSize = 10.sp)
+                Spacer(Modifier.height(5.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box {
+                        OutlinedButton(
+                            onClick = { menuExpanded = true },
+                            shape = CircleShape,
+                            modifier = Modifier.size(42.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "Tambah", tint = Color.White)
+                        }
+                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Buat gambar") },
+                                leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
+                                onClick = { menuExpanded = false; onPhoto() }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Buat video") },
+                                leadingIcon = { Icon(Icons.Default.Movie, contentDescription = null) },
+                                onClick = { menuExpanded = false; onVideo() }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Galeri saya") },
+                                leadingIcon = { Icon(Icons.Default.Collections, contentDescription = null) },
+                                onClick = { menuExpanded = false; onGallery() }
+                            )
+                        }
+                    }
                     Spacer(Modifier.weight(1f))
-                    Button(
-                        onClick = {
-                            if (draft.isNotBlank()) {
-                                messages.add(draft.trim())
-                                draft = ""
-                            }
-                        },
-                        enabled = draft.isNotBlank(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Accent),
-                        shape = CircleShape
-                    ) {
-                        Icon(Icons.Default.Send, contentDescription = "Kirim", tint = Color.White)
+                    if (draft.isBlank()) {
+                        Icon(Icons.Default.Mic, contentDescription = "Suara (segera hadir)", tint = Muted, modifier = Modifier.padding(10.dp))
+                    } else {
+                        Button(
+                            onClick = {
+                                if (draft.isNotBlank()) {
+                                    messages.add(draft.trim())
+                                    draft = ""
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Accent),
+                            shape = CircleShape,
+                            modifier = Modifier.size(44.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                        ) {
+                            Icon(Icons.Default.Send, contentDescription = "Kirim", tint = Color.White)
+                        }
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun QuickAction(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    OutlinedButton(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(13.dp)) {
-        Icon(icon, contentDescription = null, tint = Accent, modifier = Modifier.size(17.dp))
-        Spacer(Modifier.size(5.dp))
-        Text(label, fontSize = 12.sp)
     }
 }
 
