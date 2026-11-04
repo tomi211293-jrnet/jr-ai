@@ -7,6 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
   "Content-Type": "application/json; charset=utf-8",
+  "Cache-Control": "no-store",
+  "X-Content-Type-Options": "nosniff",
 };
 
 function json(data, status = 200) {
@@ -45,6 +47,11 @@ export default {
       return json({ success: false, error: "Terlalu banyak permintaan. Coba lagi satu menit." }, 429);
     }
 
+    const contentType = request.headers.get("content-type") || "";
+    if (!contentType.toLowerCase().includes("application/json")) {
+      return json({ success: false, error: "Content-Type harus application/json." }, 415);
+    }
+
     let body;
     try {
       const raw = await request.text();
@@ -56,7 +63,7 @@ export default {
       return json({ success: false, error: "Format JSON tidak valid." }, 400);
     }
 
-    if (!Array.isArray(body.messages) || body.messages.length === 0) {
+    if (!body || !Array.isArray(body.messages) || body.messages.length === 0) {
       return json({ success: false, error: "Pesan percakapan belum diisi." }, 400);
     }
 
@@ -100,7 +107,7 @@ export default {
       }
 
       return json({ success: true, reply: reply.trim() });
-    } catch (error) {
+    } catch {
       return json({
         success: false,
         error: "Layanan AI sedang tidak tersedia. Coba lagi beberapa saat.",
