@@ -1,0 +1,14 @@
+name = "jr-ai-backend"
+main = "src/index.js"
+compatibility_date = "2026-11-04"
+
+[ai]
+binding = "AI"
+
+[[ratelimits]]
+name = "CHAT_RATE_LIMITER"
+namespace_id = "91745231"
+
+[ratelimits.simple]
+limit = 5
+period = 60
