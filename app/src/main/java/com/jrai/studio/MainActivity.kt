@@ -3,6 +3,8 @@ package com.jrai.studio
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,6 +31,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -73,13 +76,7 @@ private fun JrAiApp() {
                     onVideo = { currentPage = AppPage.VIDEO },
                     onGallery = { currentPage = AppPage.GALLERY }
                 )
-                AppPage.PHOTO -> ToolScreen(
-                    title = "Foto AI",
-                    description = "Tuliskan ide gambar yang ingin kamu buat.",
-                    hint = "Contoh: pemandangan desa saat matahari terbenam...",
-                    actionLabel = "Buat Foto",
-                    onBack = { currentPage = AppPage.HOME }
-                )
+                AppPage.PHOTO -> PhotoScreen(onBack = { currentPage = AppPage.HOME })
                 AppPage.VIDEO -> ToolScreen(
                     title = "Video AI",
                     description = "Tuliskan konsep video yang ingin kamu buat.",
@@ -155,6 +152,68 @@ private fun FeatureCard(title: String, subtitle: String, icon: @Composable () ->
             }
             Text("›", color = Accent, fontSize = 27.sp)
         }
+    }
+}
+
+@Composable
+private fun PhotoScreen(onBack: () -> Unit) {
+    var selectedPhoto by remember { mutableStateOf<android.net.Uri?>(null) }
+    var editPrompt by remember { mutableStateOf("") }
+    var createPrompt by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf("") }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        selectedPhoto = uri
+        message = if (uri != null) "Foto berhasil dipilih." else ""
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(Icons.Default.ArrowBack, contentDescription = "Kembali", tint = Color.White,
+                modifier = Modifier.clickable(onClick = onBack).padding(6.dp))
+            Text("Foto AI", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        }
+        Text("BUAT FOTO DARI TEKS", color = Color(0xFFC9C2FF), fontWeight = FontWeight.Bold)
+        OutlinedTextField(
+            value = createPrompt,
+            onValueChange = { createPrompt = it },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 3,
+            label = { Text("Prompt gambar") },
+            placeholder = { Text("Contoh: pemandangan desa saat matahari terbenam...") }
+        )
+        Text("EDIT FOTO DENGAN PROMPT", color = Color(0xFFC9C2FF), fontWeight = FontWeight.Bold)
+        Text("Pilih foto dari HP, lalu tuliskan perubahan yang kamu inginkan.", color = Muted, fontSize = 13.sp)
+        OutlinedButton(onClick = { photoPicker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Image, contentDescription = null)
+            Text(if (selectedPhoto == null) "Pilih Foto dari HP" else "Ganti Foto")
+        }
+        if (selectedPhoto != null) {
+            Text("Foto sumber berhasil dipilih", color = Color(0xFF8FE3AE), fontSize = 13.sp)
+        }
+        OutlinedTextField(
+            value = editPrompt,
+            onValueChange = { editPrompt = it; message = "" },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 3,
+            label = { Text("Prompt edit foto") },
+            placeholder = { Text("Contoh: ubah latar menjadi pantai saat senja, pertahankan wajah dan pakaian asli...") }
+        )
+        Button(
+            onClick = {
+                message = when {
+                    selectedPhoto == null -> "Pilih foto dari HP terlebih dahulu."
+                    editPrompt.isBlank() -> "Tuliskan prompt edit foto terlebih dahulu."
+                    else -> "Foto dan prompt siap. Mesin AI belum dihubungkan, sehingga hasil edit belum dapat dibuat."
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Accent)
+        ) { Text("Edit Foto dengan AI", color = Color.White) }
+        if (message.isNotBlank()) Text(message, color = Color(0xFFFFD27A), fontSize = 13.sp)
+        Text("Pemilihan foto dan prompt tersedia. Generator AI akan dihubungkan pada tahap berikutnya.", color = Muted, fontSize = 12.sp)
     }
 }
 
